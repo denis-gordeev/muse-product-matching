@@ -14,6 +14,14 @@ from pca_scatter_plot import pca_scatter_plot
 logging.basicConfig(
     format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
+to_plot = False
+common_vectors = False
+
+russian_fasttext = "/home/denis/ranepa/articles/muse-classifier/"\
+    "muse_embeddings/wiki.multi.ru.vec"
+english_fasttext = "/home/denis/ranepa/articles/muse-classifier/"\
+    "muse_embeddings/wiki.multi.en.vec"
+
 
 class LinesIterator(object):
     def __init__(self, strings_container, tags_container):
@@ -28,16 +36,6 @@ class LinesIterator(object):
             # l = nltk.word_tokenize(l)
             # l = [w.lower() for w in l]
             yield output
-
-
-f = open("okpds3_unique")
-r = f.readlines()
-r = [l.strip().split("\t") for l in r]
-x = [l[0] for l in r]
-y = [l[1] for l in r]
-
-del r
-gc.collect()
 
 
 def filter_y_by_x(x, y):
@@ -75,63 +73,138 @@ def save_category_vectors(
         f.write(line)
     f.close()
 
-x = texts_pipeline_multiprocessing(x)
-x, y = filter_y_by_x(x, y)
 
-for l_i, l in enumerate(y):
-    l = l.split(".")
-    tags = []
-    tag = []
-    for el in l:
-        tag.append(el)
-        tags.append(".".join(tag))
-    y[l_i] = tags
+def get_okpd():
+    f = open("okpds3_unique")
+    r = f.readlines()
+    r = [l.strip().split("\t") for l in r]
+    x = [l[0] for l in r]
+    y = [l[1] for l in r]
 
-model = Doc2Vec(
-    LinesIterator(x, y), size=300, window=10, min_count=2, workers=4)
+    del r
+    gc.collect()
 
-model.save("doc2vec/doc2vec_okpd")
-save_category_vectors(model, "okpd")
+    x = texts_pipeline_multiprocessing(x)
+    x, y = filter_y_by_x(x, y)
 
-x = []
-y = []
-
-gc.collect()
-
-years = list(range(2012, 2018))
-
-for year in years:
-    df = pd.read_csv(
-        "eMaryland_Marketplace_Bids_-_Fiscal_Year_{}.csv".format(year))
-    df = df[pd.notna(df['Description'])]
-    df = df[pd.notna(df['NIGP Class'])]
-    df = df[pd.notna(df['NIGP Class Item'])]
-    x += list(df["Description"].values)
-    nigp_class = list(df['NIGP Class'].astype(int).astype(str).values)
-    nigp_class_item = df['NIGP Class'].astype(int).astype(str) + "-" +\
-        df['NIGP Class Item'].astype(int).astype(str)
-    nigp_class_item = list(nigp_class_item.values)
-    y += list(zip(nigp_class, nigp_class_item))
-    x += list(df["Bid Attachment Description"].values)
-    y += list(zip(nigp_class, nigp_class_item))
-
-x = texts_pipeline_multiprocessing(x)
-x, y = filter_y_by_x(x, y)
+    for l_i, l in enumerate(y):
+        l = l.split(".")
+        tags = []
+        tag = []
+        for el in l:
+            tag.append(el)
+            tags.append(".".join(tag))
+        y[l_i] = tags
+    return x, y
 
 
-model = Doc2Vec(
-    LinesIterator(x, y), size=300, window=10, min_count=2, workers=4)
+def train_doc2vec(x, y, name, maryland=False):
+    model = Doc2Vec(
+        LinesIterator(x, y), size=300, window=10, min_count=2, workers=4)
 
-model.save("doc2vec/doc2vec_maryland")
+    model.save("doc2vec/doc2vec_{}" + name)
+    save_category_vectors(model, name, maryland)
 
-save_category_vectors(model, "maryland", maryland=True)
-maryland = KeyedVectors.\
-    load_word2vec_format("doc2vec/doc2vec_category_vectors_maryland.txt")
-okpd = KeyedVectors.\
-    load_word2vec_format("doc2vec/doc2vec_category_vectors_okpd.txt")
-maryland_vectors = maryland.vectors
-okpd_vectors = okpd.vectors
 
-pca_scatter_plot(
-    (maryland_vectors, okpd_vectors),
-    labels=["maryland", "okpd"], tsne_plot=True, my_plot=False)
+def get_maryland():
+    x = []
+    y = []
+
+    gc.collect()
+
+    years = list(range(2012, 2018))
+
+    for year in years:
+        df = pd.read_csv(
+            "eMaryland_Marketplace_Bids_-_Fiscal_Year_{}.csv".format(year))
+        df = df[pd.notna(df['Description'])]
+        df = df[pd.notna(df['NIGP Class'])]
+        df = df[pd.notna(df['NIGP Class Item'])]
+        x += list(df["Description"].values)
+        nigp_class = list(df['NIGP Class'].astype(int).astype(str).values)
+        nigp_class_item = df['NIGP Class'].astype(int).astype(str) + "-" +\
+            df['NIGP Class Item'].astype(int).astype(str)
+        nigp_class_item = list(nigp_class_item.values)
+        y += list(zip(nigp_class, nigp_class_item))
+        x += list(df["Bid Attachment Description"].values)
+        y += list(zip(nigp_class, nigp_class_item))
+
+    x = texts_pipeline_multiprocessing(x)
+    x, y = filter_y_by_x(x, y)
+    return x, y
+
+
+def filter_by_embeddings(x, y, lang="ru"):
+    if lang == "ru":
+        model = KeyedVectors.load_word2vec_format(russian_fasttext)
+    elif lang == "en":
+        model = KeyedVectors.load_word2vec_format(english_fasttext)
+    else:
+        raise Exception("wrong language")
+    # Split words by "-"
+    for sent_i, sent in enumerate(x):
+        if sent_i % 100 == 0:
+            print("{0:07d}".format(len(x) - sent_i))
+        new_sent = []
+        changed = False
+        for word_i, word in enumerate(sent):
+            if "-" in word:
+                changed = True
+                word = word.split("-")
+                new_sent += word
+            else:
+                new_sent.append(word)
+        if changed:
+            x[sent_i] = new_sent
+    x = [[w for w in sent if w in model.vocab] for sent in x]
+    x, y = filter_y_by_x(x, y)
+    return x, y
+
+
+def doc2vec_with_prelearned(x, y, lang):
+    if lang == "ru":
+        embeddings_file = russian_fasttext
+    elif lang == "en":
+        embeddings_file = english_fasttext
+    else:
+        raise Exception("wrong language", lang)
+    docs = list(LinesIterator(x, y))
+    del x, y
+    gc.collect()
+    model = Doc2Vec(size=300, window=10, min_count=2, workers=4)
+    model.build_vocab(docs)
+    model.intersect_word2vec_format(embeddings_file)
+    model.dbow_words = 0
+    model.train(docs, total_examples=model.corpus_count, epochs=model.iter)
+    model.save("doc2vec/{}_combined".format(lang))
+    if lang == "en":
+        maryland == True
+    else:
+        maryland = False
+    save_category_vectors(model, lang + "_combined", maryland)
+
+if not common_vectors:
+    x, y = get_okpd()
+    train_doc2vec(x, y, "okpd")
+
+    x, y = get_maryland()
+    train_doc2vec(x, y, "maryland", maryland=True)
+else:
+    x, y = get_okpd()
+    x, y = filter_by_embeddings(x, y, "ru")
+    doc2vec_with_prelearned(x, y, "ru")
+    x, y = get_maryland()
+    x, y = filter_by_embeddings(x, y, "en")
+    doc2vec_with_prelearned(x, y, "en")
+
+if to_plot:
+    maryland = KeyedVectors.\
+        load_word2vec_format("doc2vec/doc2vec_category_vectors_maryland.txt")
+    okpd = KeyedVectors.\
+        load_word2vec_format("doc2vec/doc2vec_category_vectors_okpd.txt")
+    maryland_vectors = maryland.vectors
+    okpd_vectors = okpd.vectors
+
+    pca_scatter_plot(
+        (maryland_vectors, okpd_vectors),
+        labels=["maryland", "okpd"], tsne_plot=True, my_plot=False)
