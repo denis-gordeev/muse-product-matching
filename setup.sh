@@ -11,3 +11,6 @@ python3 map_embeddings.py --unsupervised                                doc2vec_
 python3 map_embeddings.py --semi_supervised okpd-maryland.5000-6500.txt doc2vec_category_vectors_maryland.txt doc2vec_category_vectors_okpd.txt vectors-maryland_semi.txt vectors-okpd_semi.txt
 
 python3 map_embeddings.py --unsupervised vectors-maryland-averaged.txt vectors-okpd-averaged.txt vectors-maryland_av.txt vectors-okpd_av.txt
+
+
+python3 map_embeddings.py --unsupervised fasttext_vectors/vectors-maryland.txt fasttext_vectors/vectors-okpd.txt fasttext_vectors/vectors-maryland-vecmap.txt fasttext_vectors/vectors-okpd-vecmap.txt

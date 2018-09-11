@@ -68,9 +68,11 @@ def plot_scatter(vectors_, y_, show_text=False):
     plt.legend(handles=patches)
     # plt.show()
     plt.savefig(" ".join(colormap)[:20] + ".png")
+    plt.gcf().clear()
 
 
-def pca_scatter_plot(vectors, labels=[], tsne_plot=False, my_plot=False):
+def pca_scatter_plot(vectors, labels=[], tsne_plot=False, my_plot=False,
+                     show_figures=True, path=""):
     vector_lengths = [len(v) for v in vectors]
     if not labels or len(labels) != len(vector_lengths):
         labels = list(range(len(vectors)))
@@ -97,8 +99,11 @@ def pca_scatter_plot(vectors, labels=[], tsne_plot=False, my_plot=False):
     plt.xticks(np.arange(0, 150, 10))
     plt.yticks(np.arange(0.0, 1.1, 0.1))
     ax.grid(color='r', linestyle='-', linewidth=0.1)
-    plt.show()
-
+    if show_figures:
+        plt.show()
+    else:
+        plt.savefig("{}pca_explained.png".format(path))
+    plt.gcf().clear()
     vectors = [v[:30] for v in d2v_pca.transform(d2v_scaled)]
     if tsne_plot:
         print("training tsne")
@@ -115,5 +120,11 @@ def pca_scatter_plot(vectors, labels=[], tsne_plot=False, my_plot=False):
         print("plotting seaborn")
         df = pd.DataFrame(vectors)
         df["source"] = y
-        sns.scatterplot(x=0, y=1, hue="source", data=df)
-        plt.show()
+        scatterplot = sns.scatterplot(x=0, y=1, hue="source", data=df)
+        fig = scatterplot.get_figure()
+        if show_figures:
+            fig.show()
+        else:
+            # fig.show()
+            fig.savefig("{}scatter.png".format(path))
+        plt.gcf().clear()
