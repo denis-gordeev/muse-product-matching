@@ -16,7 +16,9 @@ remove_strings = [
     "\(See .*?\)",
     "Also See .*",
     "\(not .*\)",
-    "\(for .* see\)"
+    "\(for .* see\)",
+    "\(except .*\)",
+    "кроме .*"
 
 ]
 
@@ -24,7 +26,8 @@ remove_strings = [l.lower() for l in remove_strings]
 remove_strings = "|".join(remove_strings)
 HIERARCHICAL = True
 LIMIT = False
-WORD2VEC_MATCHING = False
+WORD2VEC_MATCHING = True
+TRANSLATE = False
 if HIERARCHICAL:
     LIMIT = False
 create_averaged = False
@@ -60,6 +63,8 @@ for okpd in okpd_dict:
         okpd_eng[okpd] = names_eng_yandex[ru_name]
     else:
         print(ru_name)
+if not TRANSLATE:
+    okpd_eng = okpd_dict
 
 years = list(range(2012, 2018))
 maryland = dict()
@@ -83,6 +88,17 @@ for year in years:
         maryland = codes_dict
     else:
         maryland.update(codes_dict)
+
+
+def get_averaged_vectors(model, split_sents):
+    sents_filtered = [[w for w in sent if w in model.vocab]
+                      for sent in split_sents]
+    sents_averaged = np.array([np.sum([model[w] for w in sent], axis=0)
+                              for sent in sents_filtered])
+    sents_lengths = np.array([len(m) for m in sents_filtered])
+    sents_averaged = sents_averaged.T / sents_lengths
+    sents_averaged = sents_averaged.T
+    return sents_averaged
 
 
 def clean_file(filename):
@@ -119,7 +135,9 @@ def create_limit_dicts(source_dict, delimiter=".", limit_range=range(1, 2)):
                     k.split("-")[0]: source_dict[k].split("::")[0].strip()
                     for k in source_dict}
             else:
-                limit_dict = source_dict
+                limit_dict = {
+                    k: source_dict[k].split("::")[1].strip()
+                    for k in source_dict}
         # OKPD
         else:
             limit_dict = {
@@ -200,9 +218,20 @@ maryland -> okpd
 1 -> 3
 """
 if WORD2VEC_MATCHING:
-    path = '/home/denis/ranepa/embeddings/'\
-        'GoogleNews-vectors-negative300-SLIM.bin'
-    model = KeyedVectors.load_word2vec_format(path, binary=True)
+    if TRANSLATE:
+        path = '/home/denis/ranepa/embeddings/'\
+            'GoogleNews-vectors-negative300-SLIM.bin'
+        model = KeyedVectors.load_word2vec_format(path, binary=True)
+        model_ru = model
+        model_en = model
+    else:
+        russian_fasttext = "/home/denis/ranepa/articles/muse-classifier/"\
+            "muse_embeddings/wiki.multi.ru.vec"
+        model_ru = KeyedVectors.load_word2vec_format(russian_fasttext)
+        english_fasttext = "/home/denis/ranepa/articles/muse-classifier/"\
+            "muse_embeddings/wiki.multi.en.vec"
+        model_en = KeyedVectors.load_word2vec_format(english_fasttext)
+
 if HIERARCHICAL:
     last_okpd = 0
     best_classes = []
@@ -212,16 +241,16 @@ if HIERARCHICAL:
         m_inverse = {m_limit[k]: k for k in m_limit}
         m_codes = [k for k in m_limit]
         print("\t", m_i, m_codes[0])
+        m_names = [m_limit[k] for k in m_codes]
         if m_i == 0:
             best_classes = [None] * len(m_names)
         else:
             best_classes = [[i for i in range(len(old_codes))
                              if m.startswith(old_codes[i])][0]
                             for m in m_codes]
-        m_names = [m_limit[k] for k in m_codes]
         m_split = [set(word_tokenize(k)) for k in m_names]
         if WORD2VEC_MATCHING:
-            m_split = get_averaged_vectors(model, m_split)
+            m_split = get_averaged_vectors(model_en, m_split)
         old_names = m_names
         old_codes = m_codes
         for o_i, o_limit in enumerate(okpd_limits):
@@ -230,7 +259,7 @@ if HIERARCHICAL:
             o_names = [k for k in o_inverse]
             o_split = [set(word_tokenize(k)) for k in o_names]
             if WORD2VEC_MATCHING:
-                o_split = get_averaged_vectors(model, o_split)
+                o_split = get_averaged_vectors(model_ru, o_split)
                 if o_split[0].shape[0] != 300:
                     raise Exception
             closest_sets = compare_lists_of_sets(m_split, o_split,
@@ -258,9 +287,11 @@ if HIERARCHICAL:
     max_values = [l[1] for l in best_classes]
     best_classes = [b[0][0] for b in best_classes]
     top_indices = np.argsort(max_values)[::-1]
-    filename = "matcher_hierarchy.csv"
+    filename = "matcher_hierarchy2.csv"
     if WORD2VEC_MATCHING:
         filename = "w2v_" + filename
+    if not TRANSLATE:
+        filename = "aligned_" + filename
     f = clean_file(filename)
     for i in top_indices:
         maryland_code = old_codes[i]
@@ -341,17 +372,6 @@ def write_dict_to_txt(filename, src_dict):
 # if write_dict:
 #     write_dict_to_txt("maryland2okpd_dict_LIMIT.txt", maryland2okpd_codes)
 #     write_dict_to_txt("okpd2maryland_LIMIT.txt", okpd2maryland_codes)
-
-
-def get_averaged_vectors(model, split_sents):
-    sents_filtered = [[w for w in sent if w in model.vocab]
-                      for sent in split_sents]
-    sents_averaged = np.array([np.sum([model[w] for w in sent], axis=0)
-                              for sent in sents_filtered])
-    sents_lengths = np.array([len(m) for m in sents_filtered])
-    sents_averaged = sents_averaged.T / sents_lengths
-    sents_averaged = sents_averaged.T
-    return sents_averaged
 
 
 def vectors_to_file(sents_averaged, sents, filename, dict_inverse,
