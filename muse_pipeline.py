@@ -10,42 +10,42 @@ from pca_scatter_plot import pca_scatter_plot
 
 from utils import read_maryland_csv
 
-
-folders = []
 to_write = True
-folder = "./"
-folder = "no_refinement/"
-folder = "refinement_1000/"
-folder = "translated/"
-folder = "unsupervised_translation/"
-folder = "unsupervised_translation_2/"
-folder = "supervised/"
-folder = "vecmap_unsupervised_default/"
-folder = "combined_cosine/"
-folder = "vecmap_semi_default/"
-folder = "vecmap_supervised/"
-folder = "averaged_word2vec/"
-folder = "averaged_word2vec_common_space/"
-folder = "averaged_word2vec_vecmap/"
-folder = "averaged_word2vec_uncommon_space/"
-folder = "last_unsupervised_muse_av/"
-folder = "doc2vec_english_vectors/"
-folder = "vecmap-70/"
-folder = "fasttext_vectors/"
-folder = "fasttext-vecmap/"
-folder = "pca-10/"
-folder = "pca-20/"
-folder = "fasttext-vecmap-1/"
+# different processing scenarios correspond to folders
+folders = [
+    "./",
+    "no_refinement/",
+    "refinement_1000/",
+    "translated/",
+    "unsupervised_translation/",
+    "unsupervised_translation_2/",
+    "supervised/",
+    "vecmap_unsupervised_default/",
+    "combined_cosine/",
+    "vecmap_semi_default/",
+    "vecmap_supervised/",
+    "averaged_word2vec/",
+    "averaged_word2vec_common_space/",
+    "averaged_word2vec_vecmap/",
+    "averaged_word2vec_uncommon_space/",
+    "last_unsupervised_muse_av/",
+    "doc2vec_english_vectors/",
+    "vecmap-70/",
+    "fasttext_vectors/",
+    "fasttext-vecmap/",
+    "pca-10/",
+    "pca-20/",
+    "fasttext-vecmap-1/",
+]
 
-# limits = ["70", "10", "30", "50"]
-# limits = ["70"]
-limits = []
+limits = ["70", "10", "30", "50"]
 rank_limit = ""
 rank_limit = "-460"
 for limit in limits:
     folders.append("vecmap-{}-semi{}/".format(limit, rank_limit))
     folders.append("vecmap-{}-full{}/".format(limit, rank_limit))
     folders.append("muse-{}{}/".format(limit, rank_limit))
+
 
 # pca_scatter_plot(
 #     (maryland_vectors, okpd_vectors),
@@ -54,7 +54,8 @@ for limit in limits:
 
 def match_dicts(conversion_dict, source_names, target_names, filename,
                 scores_provided=False, to_write=False):
-    # maryland2okpd, maryland_dict, okpd_dict, maryland2okpd_dict_file
+    # maryland2okpd, marpca_scatter_plotyland_dict,
+    # okpd_dict, maryland2okpd_dict_file
     matched_pairs = []
     scores = []
     if to_write:
@@ -264,8 +265,5 @@ def main(folder, to_write):
 
 
 if __name__ == "__main__":
-    if not folders:
+    for folder in folders:
         main(folder, to_write)
-    else:
-        for folder in folders:
-            main(folder, to_write)
