@@ -1,13 +1,13 @@
 import re
 import pandas as pd
 import numpy as np
-import codecs
-import csv
 import pickle
 
 from scipy import spatial
 from gensim.models import KeyedVectors, Doc2Vec
 from nltk import word_tokenize
+
+from utils import read_nigp_csv, get_averaged_vectors, load_okpd_dict
 
 remove_strings = [
     "не включенные в другие группировки",
@@ -34,9 +34,8 @@ create_averaged = False
 create_averaged_english_only = False
 write_dict = False
 create_doc2vec = True
-f = codecs.open("okpd2.csv", "r", "cp1251")
-reader = csv.reader(f, delimiter=";")
-okpd_dict = {l[3]: l[1] for l in reader}
+
+okpd_dict = load_okpd_dict()
 
 
 try:
@@ -66,39 +65,13 @@ for okpd in okpd_dict:
 if not TRANSLATE:
     okpd_eng = okpd_dict
 
-years = list(range(2012, 2018))
-maryland = dict()
+
 """
-maryland_0 =
+nigp_0 =
     {str(int(m)):
-     maryland[m] for m in maryland if str(int(m)).isdigit()}
+     nigp[m] for m in nigp if str(int(m)).isdigit()}
 """
-for year in years:
-    df = pd.read_csv(
-        "eMaryland_Marketplace_Bids_-_Fiscal_Year_{}.csv".format(year))
-    class_descriptions = df["NIGP Class with Description"].\
-        str.replace("^[0-9]+ - ", "").str.strip() + " "
-    item_descriptions = df["NIGP Class Item with Description"].\
-        str.replace("^[0-9]+ - \d+ :", "").str.strip()
-    class_descriptions = class_descriptions + "::" + item_descriptions
-    codes = df["NIGP 5 digit code"]
-    # codes = df['NIGP Class']
-    codes_dict = dict(zip(codes, class_descriptions))
-    if year == 2012:
-        maryland = codes_dict
-    else:
-        maryland.update(codes_dict)
-
-
-def get_averaged_vectors(model, split_sents):
-    sents_filtered = [[w for w in sent if w in model.vocab]
-                      for sent in split_sents]
-    sents_averaged = np.array([np.sum([model[w] for w in sent], axis=0)
-                              for sent in sents_filtered])
-    sents_lengths = np.array([len(m) for m in sents_filtered])
-    sents_averaged = sents_averaged.T / sents_lengths
-    sents_averaged = sents_averaged.T
-    return sents_averaged
+nigp = read_nigp_csv()
 
 
 def clean_file(filename):
@@ -166,18 +139,20 @@ def process_dict(source_dict, delimiter=".", limit_range=range(1, 4)):
     return source_dict, source_dict_inverse, names, names_split, limit_dicts
 
 
-maryland, maryland_inverse, maryland_names,\
-    maryland_split, _ = process_dict(maryland, delimiter="-",
-                                     limit_range=range(1, 3))
+nigp, nigp_inverse, nigp_names,\
+    nigp_split, limit_dicts = process_dict(nigp, delimiter="-",
+                                           limit_range=range(1, 3))
 if HIERARCHICAL:
-    maryland_limits = _
-    maryland_limits = [clean_dict_strings(d) for d in maryland_limits]
-okpd_eng, okpd_inverse, okpd_names, okpd_split, _ = process_dict(okpd_eng)
+    nigp_limits = limit_dicts
+    nigp_limits = [clean_dict_strings(d) for d in nigp_limits]
+
+okpd_eng, okpd_inverse, okpd_names, okpd_split, limit_dicts = process_dict(
+    okpd_eng)
 if HIERARCHICAL:
-    okpd_limits = _
+    okpd_limits = limit_dicts
     okpd_limits = [clean_dict_strings(d) for d in okpd_limits]
 
-maryland_closest = []
+nigp_closest = []
 
 
 def compare_lists_of_sets(first_list, second_list, return_all=False):
@@ -208,10 +183,10 @@ def compare_lists_of_sets(first_list, second_list, return_all=False):
     return closest_sets
 
 
-# Sum of intersection length of common words in okpd and maryland
+# Sum of intersection length of common words in okpd and nigp
 """
 Leave only top level if no intersection
-maryland -> okpd
+nigp -> okpd
 0 -> 1
 0 -> 2
 0 -> 3
@@ -237,7 +212,7 @@ if HIERARCHICAL:
     best_classes = []
     old_codes = []
     old_names = []
-    for m_i, m_limit in enumerate(maryland_limits):
+    for m_i, m_limit in enumerate(nigp_limits):
         m_inverse = {m_limit[k]: k for k in m_limit}
         m_codes = [k for k in m_limit]
         print("\t", m_i, m_codes[0])
@@ -269,7 +244,7 @@ if HIERARCHICAL:
                     print(c_i, len([l for l in closest_sets if l[1] == 0]))
             for c_i, c in enumerate(closest_sets):
                 new_best_classes = [[o_inverse[o_names[cl_name]]
-                                    for cl_name in c[0]], c[1]]
+                                     for cl_name in c[0]], c[1]]
                 if o_i == 0:
                     best_classes[c_i] = new_best_classes
                 else:
@@ -294,17 +269,17 @@ if HIERARCHICAL:
         filename = "aligned_" + filename
     f = clean_file(filename)
     for i in top_indices:
-        maryland_code = old_codes[i]
+        nigp_code = old_codes[i]
         okpd_code = best_classes[i]
-        maryland_name = maryland[maryland_code]
+        nigp_name = nigp[nigp_code]
         okpd_name = okpd_dict[okpd_code]
         value = max_values[i]
         f.write(
             "{}\t{}\t{}\t{}\t{}\n".format(
-                maryland_code, okpd_code, maryland_name, okpd_name, value))
+                nigp_code, okpd_code, nigp_name, okpd_name, value))
 else:
-    maryland_closest = []
-    for m_i, m in enumerate(maryland_split):
+    nigp_closest = []
+    for m_i, m in enumerate(nigp_split):
         print("\t {}".format(m_i), end="\r")
         if WORD2VEC_MATCHING:
             pass
@@ -314,49 +289,49 @@ else:
             len(m.intersection(o)) for o in okpd_split]
         max_intersection = np.argmax(intersections)
         max_value = intersections[max_intersection]
-        maryland_closest.append([max_intersection, max_value])
+        nigp_closest.append([max_intersection, max_value])
 
-    # max_values = [v[1] for v in maryland_closest]
+    # max_values = [v[1] for v in nigp_closest]
 
     max_values = [
-        np.average([maryland_closest[v_i][1] / len(maryland_split[v_i]),
-                   maryland_closest[v_i][1] / len(okpd_split
-                                                  [maryland_closest[v_i][0]])])
-        for v_i in range(len(maryland_closest))]
-    compare_maryland = np.argmax(max_values)
-    compare_okpd = maryland_closest[compare_maryland][0]
-    print(maryland_names[compare_maryland])
+        np.average([nigp_closest[v_i][1] / len(nigp_split[v_i]),
+                   nigp_closest[v_i][1] / len(okpd_split
+                                                  [nigp_closest[v_i][0]])])
+        for v_i in range(len(nigp_closest))]
+    compare_nigp = np.argmax(max_values)
+    compare_okpd = nigp_closest[compare_nigp][0]
+    print(nigp_names[compare_nigp])
     print(okpd_names[compare_okpd])
 
 top_indices = np.argsort(max_values)[::-1]
 
 # top 10
-maryland2okpd_codes = dict()
+nigp2okpd_codes = dict()
 if write_dict:
     f = clean_file("matcher_limit.csv")
 for top_i in top_indices:  # [:int(len(top_indices) / 10)]:
     value = max_values[top_i]
     # if value <= 0.5 and not write_dict:
     #     break
-    maryland_name = maryland_names[top_i]
-    okpd_name = okpd_names[maryland_closest[top_i][0]]
-    maryland_code = maryland_inverse[maryland_name]
+    nigp_name = nigp_names[top_i]
+    okpd_name = okpd_names[nigp_closest[top_i][0]]
+    nigp_code = nigp_inverse[nigp_name]
     okpd_codes = okpd_inverse[okpd_name]
     if okpd_codes:
         okpd_codes = okpd_codes[:1]
         for okpd_code in okpd_codes:
             ru_name = okpd_dict[okpd_code]
-            maryland2okpd_codes[maryland_code] = okpd_code
+            nigp2okpd_codes[nigp_code] = okpd_code
             if write_dict:
                 f.write(
                     "{}\t{}\t{}\t{}\t{}\n".format(
-                        maryland_code, okpd_code, maryland_name, ru_name,
+                        nigp_code, okpd_code, nigp_name, ru_name,
                         value))
     if not write_dict:
-        print(maryland_name)
+        print(nigp_name)
         print(okpd_name)
         print(value)
-okpd2maryland_codes = {maryland2okpd_codes[k]: k for k in maryland2okpd_codes}
+okpd2nigp_codes = {nigp2okpd_codes[k]: k for k in nigp2okpd_codes}
 
 
 def write_dict_to_txt(filename, src_dict):
@@ -370,12 +345,12 @@ def write_dict_to_txt(filename, src_dict):
 
 
 # if write_dict:
-#     write_dict_to_txt("maryland2okpd_dict_LIMIT.txt", maryland2okpd_codes)
-#     write_dict_to_txt("okpd2maryland_LIMIT.txt", okpd2maryland_codes)
+#     write_dict_to_txt("nigp2okpd_dict_LIMIT.txt", nigp2okpd_codes)
+#     write_dict_to_txt("okpd2nigp_LIMIT.txt", okpd2nigp_codes)
 
 
 def vectors_to_file(sents_averaged, sents, filename, dict_inverse,
-                    maryland=False, vector_size=300):
+                    nigp=False, vector_size=300):
     f = open(filename, "w")
     f.write("")
     f.flush()
@@ -388,7 +363,7 @@ def vectors_to_file(sents_averaged, sents, filename, dict_inverse,
         if vector.size == vector_size:
             codes = []
             sent = sents[v_i]
-            if maryland:
+            if nigp:
                 codes = [dict_inverse[sent]]
             else:
                 codes = dict_inverse[sent]
@@ -408,34 +383,34 @@ if create_averaged:
             'GoogleNews-vectors-negative300-SLIM.bin'
         model = KeyedVectors.load_word2vec_format(path, binary=True)
 
-        maryland_averaged = get_averaged_vectors(model, maryland_split)
+        nigp_averaged = get_averaged_vectors(model, nigp_split)
         okpd_averaged = get_averaged_vectors(model, okpd_split)
     else:
-        if create doc2vec:
-            path = "doc2vec/doc2vec_maryland"
+        if create_doc2vec:
+            path = "doc2vec/doc2vec_nigp"
             model = Doc2Vec.load(path)
-            maryland_docvecs = np.array([model.infer_vector(sent)
-                                        for sent in maryland_names])
+            nigp_docvecs = np.array([model.infer_vector(sent)
+                                     for sent in nigp_names])
             okpd_docvecs = np.array([model.infer_vector(sent)
                                      for sent in okpd_names])
             vectors_to_file(
-                maryland_docvecs, maryland_names,
-                "doc2vec_english_vectors/vectors-maryland.txt",
-                maryland_inverse,
-                maryland=True,
+                nigp_docvecs, nigp_names,
+                "doc2vec_english_vectors/vectors-nigp.txt",
+                nigp_inverse,
+                nigp=True,
             )
             vectors_to_file(
                 okpd_docvecs, okpd_names,
                 "doc2vec_english_vectors/vectors-okpd.txt",
                 okpd_inverse,
-                maryland=False,
+                nigp=False,
             )
         else:
             path = '/home/denis/ranepa/articles/muse-classifier/'\
                 'muse_embeddings/wiki.multi.en.vec'
             model = KeyedVectors.load_word2vec_format(path)
-            maryland_averaged = get_averaged_vectors(
-                model, maryland_split)
+            nigp_averaged = get_averaged_vectors(
+                model, nigp_split)
             path = '/home/denis/ranepa/articles/muse-classifier/'\
                 'muse_embeddings/wiki.multi.ru.vec'
             model = KeyedVectors.load_word2vec_format(path)
@@ -443,14 +418,14 @@ if create_averaged:
                 model, okpd_split)
 
         vectors_to_file(
-            maryland_averaged, maryland_names,
-            "averaged_word2vec_common_space/vectors-maryland.txt",
-            maryland_inverse,
-            maryland=True,
+            nigp_averaged, nigp_names,
+            "averaged_word2vec_common_space/vectors-nigp.txt",
+            nigp_inverse,
+            nigp=True,
         )
         vectors_to_file(
             okpd_averaged, okpd_names,
             "averaged_word2vec_common_space/vectors-okpd.txt",
             okpd_inverse,
-            maryland=False,
+            nigp=False,
         )

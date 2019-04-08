@@ -183,6 +183,7 @@ def doc2vec_with_prelearned(x, y, lang):
         maryland = False
     save_category_vectors(model, lang + "_combined", maryland)
 
+
 if not common_vectors:
     x, y = get_okpd()
     train_doc2vec(x, y, "okpd")

@@ -4,10 +4,12 @@ import csv
 import pickle
 import codecs
 import numpy as np
-import pandas as pd
 from scipy import spatial
 from gensim.models import KeyedVectors
 from pca_scatter_plot import pca_scatter_plot
+
+from utils import read_maryland_csv
+
 
 folders = []
 to_write = True
@@ -228,27 +230,12 @@ def main(folder, to_write):
 
     maryland2okpd = pickle.load(open(maryland2okpd_file, "rb"))
     okpd2maryland = pickle.load(open(okpd2maryland_file, "rb"))
-    maryland_names = dict()
-    okpd_names = dict()
+
     f = codecs.open("okpd2.csv", "r", "cp1251")
     reader = csv.reader(f, delimiter=";")
     okpd_dict = {l[3]: l[1] for l in reader}
-    years = list(range(2012, 2018))
-    maryland_dict = dict()
-    for year in years:
-        df = pd.read_csv(
-            "eMaryland_Marketplace_Bids_-_Fiscal_Year_{}.csv".format(year))
-        class_descriptions = df["NIGP Class with Description"].\
-            str.replace("^[0-9]+ - ", "").str.strip() + " "
-        item_descriptions = df["NIGP Class Item with Description"].\
-            str.replace("^[0-9]+ - \d+ :", "").str.strip()
-        class_descriptions = class_descriptions + item_descriptions
-        codes = df["NIGP 5 digit code"]
-        codes_dict = dict(zip(codes, class_descriptions))
-        if year == 2012:
-            maryland_dict = codes_dict
-        else:
-            maryland_dict.update(codes_dict)
+
+    maryland_dict = read_maryland_csv()
 
     matched_pairs, scores = match_dicts(
         maryland2okpd, maryland_dict, okpd_dict, maryland2okpd_dict_file,
@@ -276,8 +263,9 @@ def main(folder, to_write):
         )
 
 
-if not folders:
-    main(folder, to_write)
-else:
-    for folder in folders:
+if __name__ == "__main__":
+    if not folders:
         main(folder, to_write)
+    else:
+        for folder in folders:
+            main(folder, to_write)
